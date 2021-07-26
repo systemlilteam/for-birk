@@ -1,12 +1,13 @@
+import threading
 from flask import Flask, request, Response
 from flask_apscheduler import APScheduler
 from queue import Queue
 from datetime import datetime
+import time
 import config
 import numpy as np
 import requests
 import json
-import time
 import pickle
 import logging
 
@@ -128,6 +129,24 @@ INTERVAL_TASK_ID = 'CheckHealth'
 #             # except:
 #             #     logging.error('Error')
 
+def handle_hashes():
+    hashes = init_hash_list()
+    logging.info(f'Hashes List {hashes}')
+    for hash in hashes:
+        health_status = {}
+        dump_Data(health_status)
+        send_ranges_to_workers(hash)
+        while True:
+            for worker in range(1,config.WORKERS_NUMBER+1):
+                health_status = import_data(health_status)
+                port = worker + config.BASE_PORT
+                if health_status[str(port)]['checkStatus'] != "done" and health_status[str(port)]['checkStatus'] != "start" :
+                    logging.info(f'Worker Found Solution, {health_status[str(port)]}')
+                    write_solution(health_status)
+                    break
+                time.sleep(10)
+
+
 def check_health(): 
     for worker in range(1,config.WORKERS_NUMBER+1):
         try:
@@ -178,6 +197,9 @@ def get_health():
     return status_code
 
 
+def runApp():
+    app.run(debug=True, use_reloader=False, port=5000, host='0.0.0.0')
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0",port=5000,debug=False)
+    threading.Thread(target=handle_hashes).start()
+    threading.Thread(target=runApp).start()
